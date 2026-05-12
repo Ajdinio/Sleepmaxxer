@@ -1,6 +1,7 @@
-# SleepMaxxer
+# SleepMaxxer for Windows
 
 A Simple Red Light Filter to help with melatonin production, Similar to Apple's accessibility feature.
+Windows only.
 
 ## Build
 
