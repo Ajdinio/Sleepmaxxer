@@ -3,10 +3,19 @@
 A Simple Red Light Filter to help with melatonin production, Similar to Apple's accessibility feature.
 Windows only.
 
-## Build
+## Installation
+
+Clone this repository:
 
 ```powershell
-.\build.ps1
+git clone https://github.com/Ajdinio/Sleepmaxxer.git
+cd Sleepmaxxer
+```
+
+Then build the app:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
 The executable is created at:
