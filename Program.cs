@@ -179,7 +179,16 @@ namespace SleepMaxxer
 
     internal sealed class ControlForm : Form
     {
+        private const int DesignClientWidth = 360;
+        private const int DesignClientHeight = 236;
+        private const int ClientPadding = 22;
+        private const int ReferenceScreenWidth = 1920;
+        private const int ReferenceScreenHeight = 1080;
+
         private readonly AppSettings settings;
+        private readonly Dictionary<Control, Rectangle> designBounds = new Dictionary<Control, Rectangle>();
+        private readonly Dictionary<Control, float> designFontSizes = new Dictionary<Control, float>();
+        private readonly Label titleLabel;
         private readonly CheckBox filterToggle;
         private readonly TrackBar intensitySlider;
         private readonly Label intensityValue;
@@ -195,23 +204,24 @@ namespace SleepMaxxer
         {
             this.settings = settings;
             Text = "SleepMaxxer";
+            AutoScaleMode = AutoScaleMode.None;
             StartPosition = FormStartPosition.CenterScreen;
             FormBorderStyle = FormBorderStyle.FixedSingle;
             MaximizeBox = false;
             MinimizeBox = true;
-            ClientSize = new Size(360, 236);
+            ClientSize = new Size(DesignClientWidth, DesignClientHeight);
             BackColor = Color.FromArgb(24, 24, 24);
             ForeColor = Color.White;
-            Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+            Font = new Font("Segoe UI", 13F, FontStyle.Regular, GraphicsUnit.Pixel);
             ShowIcon = false;
 
-            var title = new Label
+            titleLabel = new Label
             {
                 Text = "SleepMaxxer",
                 AutoSize = false,
                 Location = new Point(22, 18),
                 Size = new Size(316, 30),
-                Font = new Font(Font.FontFamily, 18F, FontStyle.Bold),
+                Font = new Font(Font.FontFamily, 24F, FontStyle.Bold, GraphicsUnit.Pixel),
                 ForeColor = Color.FromArgb(255, 92, 92)
             };
 
@@ -288,7 +298,7 @@ namespace SleepMaxxer
             exitButton.ForeColor = Color.White;
             exitButton.Click += delegate { OnExitRequested(); };
 
-            Controls.Add(title);
+            Controls.Add(titleLabel);
             Controls.Add(filterToggle);
             Controls.Add(intensityLabel);
             Controls.Add(intensityValue);
@@ -296,13 +306,30 @@ namespace SleepMaxxer
             Controls.Add(minimizeToTrayToggle);
             Controls.Add(exitButton);
 
+            CaptureDesignLayout();
             SyncFromSettings(settings);
+            NormalizeWindowLayout();
         }
 
         protected override void OnHandleCreated(EventArgs e)
         {
             base.OnHandleCreated(e);
             NativeMethods.ApplyCaptionStyle(Handle, BackColor, Color.White);
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            NormalizeWindowLayout();
+        }
+
+        protected override void OnVisibleChanged(EventArgs e)
+        {
+            base.OnVisibleChanged(e);
+            if (Visible)
+            {
+                NormalizeWindowLayout();
+            }
         }
 
         public void SyncFromSettings(AppSettings source)
@@ -313,6 +340,125 @@ namespace SleepMaxxer
             intensityValue.Text = source.IntensityPercent + "%";
             minimizeToTrayToggle.Checked = source.MinimizeToTrayOnClose;
             syncing = false;
+        }
+
+        private void NormalizeWindowLayout()
+        {
+            ApplyScreenLayoutScale();
+            titleLabel.Height = Math.Max(titleLabel.Height, titleLabel.PreferredHeight + 4);
+            intensityValue.Height = Math.Max(intensityValue.Height, intensityValue.PreferredHeight);
+
+            var required = GetRequiredClientSize();
+            ClientSize = required;
+            MinimumSize = SizeFromClientSize(required);
+            CenterOnCurrentScreenIfNeeded();
+        }
+
+        private void CaptureDesignLayout()
+        {
+            designBounds.Clear();
+            designFontSizes.Clear();
+
+            foreach (Control control in Controls)
+            {
+                designBounds[control] = control.Bounds;
+                designFontSizes[control] = control.Font.Size;
+            }
+        }
+
+        private void ApplyScreenLayoutScale()
+        {
+            if (designBounds.Count == 0)
+            {
+                return;
+            }
+
+            var scale = GetCurrentScreenScale();
+            foreach (Control control in Controls)
+            {
+                Rectangle bounds;
+                if (designBounds.TryGetValue(control, out bounds))
+                {
+                    control.Bounds = ScaleRectangle(bounds, scale);
+                }
+
+                float fontSize;
+                if (designFontSizes.TryGetValue(control, out fontSize))
+                {
+                    control.Font = new Font(control.Font.FontFamily, (float)Math.Max(8.0, fontSize * scale), control.Font.Style, GraphicsUnit.Pixel);
+                }
+            }
+
+            ClientSize = new Size(
+                Math.Max(DesignClientWidth, ScaleValue(DesignClientWidth, scale)),
+                Math.Max(DesignClientHeight, ScaleValue(DesignClientHeight, scale)));
+        }
+
+        private double GetCurrentScreenScale()
+        {
+            var screen = Screen.FromControl(this);
+            if (screen == null)
+            {
+                screen = Screen.PrimaryScreen;
+            }
+
+            if (screen == null)
+            {
+                return 1.0;
+            }
+
+            var widthScale = screen.Bounds.Width / (double)ReferenceScreenWidth;
+            var heightScale = screen.Bounds.Height / (double)ReferenceScreenHeight;
+            return Math.Max(0.85, Math.Min(2.0, Math.Min(widthScale, heightScale)));
+        }
+
+        private static Rectangle ScaleRectangle(Rectangle rectangle, double scale)
+        {
+            return new Rectangle(
+                ScaleValue(rectangle.X, scale),
+                ScaleValue(rectangle.Y, scale),
+                ScaleValue(rectangle.Width, scale),
+                ScaleValue(rectangle.Height, scale));
+        }
+
+        private static int ScaleValue(int value, double scale)
+        {
+            return (int)Math.Round(value * scale);
+        }
+
+        private Size GetRequiredClientSize()
+        {
+            var requiredRight = DesignClientWidth;
+            var requiredBottom = DesignClientHeight;
+
+            foreach (Control control in Controls)
+            {
+                requiredRight = Math.Max(requiredRight, control.Right + ClientPadding);
+                requiredBottom = Math.Max(requiredBottom, control.Bottom + 10);
+            }
+
+            return new Size(requiredRight, requiredBottom);
+        }
+
+        private void CenterOnCurrentScreenIfNeeded()
+        {
+            var screen = Screen.FromPoint(Cursor.Position);
+            if (screen == null)
+            {
+                screen = Screen.PrimaryScreen;
+            }
+
+            if (screen == null)
+            {
+                return;
+            }
+
+            if (!screen.WorkingArea.Contains(Bounds))
+            {
+                Location = new Point(
+                    screen.WorkingArea.Left + ((screen.WorkingArea.Width - Width) / 2),
+                    screen.WorkingArea.Top + ((screen.WorkingArea.Height - Height) / 2));
+            }
         }
 
         private static int Clamp(int value, int min, int max)
