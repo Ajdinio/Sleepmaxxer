@@ -203,6 +203,7 @@ namespace SleepMaxxer
             BackColor = Color.FromArgb(24, 24, 24);
             ForeColor = Color.White;
             Font = new Font("Segoe UI", 10F, FontStyle.Regular, GraphicsUnit.Point);
+            ShowIcon = false;
 
             var title = new Label
             {
@@ -296,6 +297,12 @@ namespace SleepMaxxer
             Controls.Add(exitButton);
 
             SyncFromSettings(settings);
+        }
+
+        protected override void OnHandleCreated(EventArgs e)
+        {
+            base.OnHandleCreated(e);
+            NativeMethods.ApplyCaptionStyle(Handle, BackColor, Color.White);
         }
 
         public void SyncFromSettings(AppSettings source)
@@ -634,6 +641,11 @@ namespace SleepMaxxer
 
     internal static class NativeMethods
     {
+        private const int DwmwaUseImmersiveDarkMode = 20;
+        private const int DwmwaBorderColor = 34;
+        private const int DwmwaCaptionColor = 35;
+        private const int DwmwaTextColor = 36;
+
         public static void EnableDpiAwareness()
         {
             try
@@ -654,8 +666,38 @@ namespace SleepMaxxer
             };
         }
 
+        public static void ApplyCaptionStyle(IntPtr handle, Color captionColor, Color textColor)
+        {
+            if (handle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            try
+            {
+                var darkMode = 1;
+                DwmSetWindowAttribute(handle, DwmwaUseImmersiveDarkMode, ref darkMode, sizeof(int));
+
+                var caption = ColorTranslator.ToWin32(captionColor);
+                DwmSetWindowAttribute(handle, DwmwaCaptionColor, ref caption, sizeof(int));
+
+                var border = ColorTranslator.ToWin32(captionColor);
+                DwmSetWindowAttribute(handle, DwmwaBorderColor, ref border, sizeof(int));
+
+                var text = ColorTranslator.ToWin32(textColor);
+                DwmSetWindowAttribute(handle, DwmwaTextColor, ref text, sizeof(int));
+            }
+            catch
+            {
+                // If DWM styling is unavailable, Windows keeps the native title bar.
+            }
+        }
+
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
+
+        [DllImport("dwmapi.dll")]
+        private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int attributeValue, int attributeSize);
 
         [DllImport("Magnification.dll", ExactSpelling = true, SetLastError = true)]
         public static extern bool MagInitialize();
