@@ -28,6 +28,7 @@ namespace SleepMaxxer
     {
         private readonly AppSettings settings;
         private readonly ColorFilterManager colorFilter;
+        private readonly FullRedModeController fullRedMode;
         private readonly ControlForm control;
         private readonly NotifyIcon trayIcon;
         private bool exiting;
@@ -36,12 +37,14 @@ namespace SleepMaxxer
         {
             settings = AppSettings.Load();
             colorFilter = new ColorFilterManager();
+            fullRedMode = new FullRedModeController();
             control = new ControlForm(settings);
             trayIcon = CreateTrayIcon();
 
             control.FilterToggled += delegate { ApplySettings(); };
             control.IntensityChanged += delegate { ApplySettings(); };
             control.MinimizeToTrayChanged += delegate { SaveSettings(); };
+            control.FullRedModeRequested += delegate { fullRedMode.Show(); };
             control.ExitRequested += delegate { ExitApplication(); };
             control.FormClosing += Control_FormClosing;
 
@@ -61,6 +64,7 @@ namespace SleepMaxxer
                 control.SyncFromSettings(settings);
                 ApplySettings();
             });
+            menu.Items.Add("Full red mode", null, delegate { fullRedMode.Show(); });
             menu.Items.Add(new ToolStripSeparator());
             menu.Items.Add("Exit", null, delegate { ExitApplication(); });
 
@@ -156,6 +160,7 @@ namespace SleepMaxxer
             exiting = true;
             SaveSettings();
             SystemEvents.DisplaySettingsChanged -= DisplaySettingsChanged;
+            fullRedMode.Dispose();
             colorFilter.Restore();
             trayIcon.Visible = false;
             trayIcon.Dispose();
@@ -169,6 +174,7 @@ namespace SleepMaxxer
             if (disposing)
             {
                 trayIcon.Dispose();
+                fullRedMode.Dispose();
                 colorFilter.Dispose();
                 control.Dispose();
             }
@@ -179,11 +185,9 @@ namespace SleepMaxxer
 
     internal sealed class ControlForm : Form
     {
-        private const int DesignClientWidth = 360;
-        private const int DesignClientHeight = 236;
-        private const int ClientPadding = 22;
-        private const int ReferenceScreenWidth = 1920;
-        private const int ReferenceScreenHeight = 1080;
+        private const int DesignClientWidth = 440;
+        private const int DesignClientHeight = 310;
+        private const int ClientPadding = 30;
 
         private readonly AppSettings settings;
         private readonly Dictionary<Control, Rectangle> designBounds = new Dictionary<Control, Rectangle>();
@@ -198,6 +202,7 @@ namespace SleepMaxxer
         public event EventHandler FilterToggled;
         public event EventHandler IntensityChanged;
         public event EventHandler MinimizeToTrayChanged;
+        public event EventHandler FullRedModeRequested;
         public event EventHandler ExitRequested;
 
         public ControlForm(AppSettings settings)
@@ -212,16 +217,16 @@ namespace SleepMaxxer
             ClientSize = new Size(DesignClientWidth, DesignClientHeight);
             BackColor = Color.FromArgb(24, 24, 24);
             ForeColor = Color.White;
-            Font = new Font("Segoe UI", 13F, FontStyle.Regular, GraphicsUnit.Pixel);
+            Font = new Font("Segoe UI", 16F, FontStyle.Regular, GraphicsUnit.Pixel);
             ShowIcon = false;
 
             titleLabel = new Label
             {
                 Text = "SleepMaxxer",
                 AutoSize = false,
-                Location = new Point(22, 18),
-                Size = new Size(316, 30),
-                Font = new Font(Font.FontFamily, 24F, FontStyle.Bold, GraphicsUnit.Pixel),
+                Location = new Point(30, 24),
+                Size = new Size(380, 36),
+                Font = new Font(Font.FontFamily, 30F, FontStyle.Bold, GraphicsUnit.Pixel),
                 ForeColor = Color.FromArgb(255, 92, 92)
             };
 
@@ -229,7 +234,7 @@ namespace SleepMaxxer
             {
                 Text = "Red filter active",
                 AutoSize = true,
-                Location = new Point(26, 68),
+                Location = new Point(34, 82),
                 Checked = settings.FilterEnabled
             };
             filterToggle.CheckedChanged += delegate
@@ -243,21 +248,21 @@ namespace SleepMaxxer
             {
                 Text = "Intensity",
                 AutoSize = true,
-                Location = new Point(26, 106)
+                Location = new Point(34, 126)
             };
 
             intensityValue = new Label
             {
                 AutoSize = false,
                 TextAlign = ContentAlignment.MiddleRight,
-                Location = new Point(284, 102),
-                Size = new Size(54, 24)
+                Location = new Point(342, 122),
+                Size = new Size(68, 28)
             };
 
             intensitySlider = new TrackBar
             {
-                Location = new Point(22, 132),
-                Size = new Size(318, 38),
+                Location = new Point(30, 158),
+                Size = new Size(382, 44),
                 Minimum = 0,
                 Maximum = 100,
                 TickFrequency = 10,
@@ -276,7 +281,7 @@ namespace SleepMaxxer
             {
                 Text = "Minimize to tray when closing",
                 AutoSize = true,
-                Location = new Point(26, 178),
+                Location = new Point(34, 220),
                 Checked = settings.MinimizeToTrayOnClose
             };
             minimizeToTrayToggle.CheckedChanged += delegate
@@ -286,11 +291,23 @@ namespace SleepMaxxer
                 OnMinimizeToTrayChanged();
             };
 
+            var fullRedModeButton = new Button
+            {
+                Text = "Full red mode",
+                Location = new Point(30, 262),
+                Size = new Size(190, 34),
+                FlatStyle = FlatStyle.Flat
+            };
+            fullRedModeButton.FlatAppearance.BorderColor = Color.FromArgb(140, 45, 45);
+            fullRedModeButton.FlatAppearance.MouseOverBackColor = Color.FromArgb(110, 24, 24);
+            fullRedModeButton.ForeColor = Color.White;
+            fullRedModeButton.Click += delegate { OnFullRedModeRequested(); };
+
             var exitButton = new Button
             {
                 Text = "Exit",
-                Location = new Point(242, 198),
-                Size = new Size(96, 28),
+                Location = new Point(300, 262),
+                Size = new Size(110, 34),
                 FlatStyle = FlatStyle.Flat
             };
             exitButton.FlatAppearance.BorderColor = Color.FromArgb(90, 90, 90);
@@ -304,6 +321,7 @@ namespace SleepMaxxer
             Controls.Add(intensityValue);
             Controls.Add(intensitySlider);
             Controls.Add(minimizeToTrayToggle);
+            Controls.Add(fullRedModeButton);
             Controls.Add(exitButton);
 
             CaptureDesignLayout();
@@ -396,20 +414,7 @@ namespace SleepMaxxer
 
         private double GetCurrentScreenScale()
         {
-            var screen = Screen.FromControl(this);
-            if (screen == null)
-            {
-                screen = Screen.PrimaryScreen;
-            }
-
-            if (screen == null)
-            {
-                return 1.0;
-            }
-
-            var widthScale = screen.Bounds.Width / (double)ReferenceScreenWidth;
-            var heightScale = screen.Bounds.Height / (double)ReferenceScreenHeight;
-            return Math.Max(0.85, Math.Min(2.0, Math.Min(widthScale, heightScale)));
+            return 1.0;
         }
 
         private static Rectangle ScaleRectangle(Rectangle rectangle, double scale)
@@ -484,6 +489,204 @@ namespace SleepMaxxer
         {
             var handler = MinimizeToTrayChanged;
             if (handler != null) handler(this, EventArgs.Empty);
+        }
+
+        private void OnFullRedModeRequested()
+        {
+            var handler = FullRedModeRequested;
+            if (handler != null) handler(this, EventArgs.Empty);
+        }
+
+        private void OnExitRequested()
+        {
+            var handler = ExitRequested;
+            if (handler != null) handler(this, EventArgs.Empty);
+        }
+    }
+
+    internal sealed class FullRedModeController : IDisposable
+    {
+        private readonly List<SolidRedOverlayForm> overlays = new List<SolidRedOverlayForm>();
+        private bool cursorHidden;
+        private bool disposing;
+
+        public void Show()
+        {
+            if (overlays.Count > 0)
+            {
+                FocusOverlay();
+                return;
+            }
+
+            HideCursor();
+
+            foreach (var screen in Screen.AllScreens)
+            {
+                var overlay = new SolidRedOverlayForm(screen.Bounds);
+                overlay.ExitRequested += Overlay_ExitRequested;
+                overlays.Add(overlay);
+                overlay.Show();
+            }
+
+            FocusOverlay();
+        }
+
+        public void Hide()
+        {
+            if (disposing)
+            {
+                return;
+            }
+
+            while (overlays.Count > 0)
+            {
+                var overlay = overlays[0];
+                overlays.RemoveAt(0);
+                overlay.ExitRequested -= Overlay_ExitRequested;
+                overlay.ForceClose();
+                overlay.Dispose();
+            }
+
+            RestoreCursor();
+        }
+
+        public void Dispose()
+        {
+            disposing = true;
+            while (overlays.Count > 0)
+            {
+                var overlay = overlays[0];
+                overlays.RemoveAt(0);
+                overlay.ExitRequested -= Overlay_ExitRequested;
+                overlay.ForceClose();
+                overlay.Dispose();
+            }
+
+            RestoreCursor();
+        }
+
+        private void Overlay_ExitRequested(object sender, EventArgs e)
+        {
+            Hide();
+        }
+
+        private void HideCursor()
+        {
+            if (!cursorHidden)
+            {
+                NativeMethods.ShowCursor(false);
+                cursorHidden = true;
+            }
+        }
+
+        private void RestoreCursor()
+        {
+            if (cursorHidden)
+            {
+                NativeMethods.ShowCursor(true);
+                cursorHidden = false;
+            }
+        }
+
+        private void FocusOverlay()
+        {
+            if (overlays.Count == 0)
+            {
+                return;
+            }
+
+            var cursor = Cursor.Position;
+            SolidRedOverlayForm selected = null;
+            foreach (var overlay in overlays)
+            {
+                if (overlay.Bounds.Contains(cursor))
+                {
+                    selected = overlay;
+                    break;
+                }
+            }
+
+            if (selected == null)
+            {
+                selected = overlays[0];
+            }
+
+            selected.Show();
+            selected.WindowState = FormWindowState.Normal;
+            selected.TopMost = true;
+            selected.BringToFront();
+            selected.Activate();
+            selected.Focus();
+        }
+    }
+
+    internal sealed class SolidRedOverlayForm : Form
+    {
+        private bool allowClose;
+
+        public event EventHandler ExitRequested;
+
+        public SolidRedOverlayForm(Rectangle bounds)
+        {
+            AutoScaleMode = AutoScaleMode.None;
+            BackColor = Color.Red;
+            Bounds = bounds;
+            FormBorderStyle = FormBorderStyle.None;
+            KeyPreview = true;
+            ShowInTaskbar = false;
+            StartPosition = FormStartPosition.Manual;
+            TopMost = true;
+            WindowState = FormWindowState.Normal;
+        }
+
+        public void ForceClose()
+        {
+            allowClose = true;
+            Close();
+        }
+
+        protected override void OnShown(EventArgs e)
+        {
+            base.OnShown(e);
+            BringToFront();
+            Activate();
+            Focus();
+        }
+
+        protected override void OnKeyDown(KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Escape)
+            {
+                e.Handled = true;
+                OnExitRequested();
+                return;
+            }
+
+            base.OnKeyDown(e);
+        }
+
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            if (!allowClose)
+            {
+                e.Cancel = true;
+                BringToFront();
+                Activate();
+                return;
+            }
+
+            base.OnFormClosing(e);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Escape)
+            {
+                OnExitRequested();
+                return true;
+            }
+
+            return base.ProcessCmdKey(ref msg, keyData);
         }
 
         private void OnExitRequested()
@@ -841,6 +1044,9 @@ namespace SleepMaxxer
 
         [DllImport("user32.dll")]
         private static extern bool SetProcessDPIAware();
+
+        [DllImport("user32.dll")]
+        public static extern int ShowCursor(bool show);
 
         [DllImport("dwmapi.dll")]
         private static extern int DwmSetWindowAttribute(IntPtr hwnd, int attribute, ref int attributeValue, int attributeSize);

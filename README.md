@@ -28,4 +28,5 @@ bin\SleepMaxxer.exe
 
 - Toggle the red filter on or off.
 - Adjust filter intensity from 0% to 100%.
+- Use full red mode to cover all screens with solid red until Escape is pressed.
 - Optionally minimize the app to the system tray when closing.

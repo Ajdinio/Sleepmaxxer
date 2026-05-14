@@ -23,4 +23,8 @@ New-Item -ItemType Directory -Path $outDir -Force | Out-Null
     /reference:System.Windows.Forms.dll `
     "$PSScriptRoot\Program.cs"
 
+if ($LASTEXITCODE -ne 0) {
+    throw "Build failed with exit code $LASTEXITCODE"
+}
+
 Write-Host "Built $outFile"
