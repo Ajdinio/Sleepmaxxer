@@ -29,4 +29,4 @@ bin\SleepMaxxer.exe
 - Toggle the red filter on or off.
 - Adjust filter intensity from 0% to 100%.
 - Optionally minimize the app to the system tray when closing.
-- Full Red Mode to use as a Nightlamp. Press ESC to close   
+- Full Sceen Red Mode to use as a Nightlamp. Press ESC to close   
